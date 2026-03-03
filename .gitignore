@@ -1,0 +1,17 @@
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+.eggs/
+dist/
+build/
+*.egg
+output/*.csv
+output/*.json
+output/*.lock
+.env
+.idea/
+.vscode/
+*.log
