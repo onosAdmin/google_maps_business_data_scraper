@@ -1,17 +1,20 @@
 """
 Website email extractor module.
 Crawls business websites to find contact information and emails.
+
+CLI usage:
+    maps-scraper-emails --csv output/results_hotel_Verona_Italy.csv
 """
 
+import argparse
 import asyncio
-import re
+import sys
 from typing import List, Set, Dict, Any, Optional
 from urllib.parse import urljoin, urlparse
 import requests
-from bs4 import BeautifulSoup
-from playwright.async_api import async_playwright, Browser, Page
+from playwright.async_api import async_playwright, Browser
 
-from .utils import extract_emails
+from .utils import extract_emails, load_csv, save_csv_rows
 
 
 CONTACT_PATHS = [
@@ -188,43 +191,124 @@ class WebsiteEmailExtractor:
         }
 
 
-async def extract_emails_from_website(website_url: str, timeout: int = 15) -> List[str]:
-    """
-    Convenience function to extract emails from a website.
+def parse_args():
+    """Parse command line arguments."""
+    parser = argparse.ArgumentParser(
+        description="Extract emails from business websites listed in a CSV file"
+    )
 
-    Args:
-        website_url: Business website URL
-        timeout: Request timeout in seconds
+    parser.add_argument(
+        "--csv",
+        type=str,
+        required=True,
+        help="Path to CSV file from maps-scraper-search",
+    )
 
-    Returns:
-        List of unique email addresses found
-    """
-    async with WebsiteEmailExtractor(timeout=timeout) as extractor:
-        result = await extractor.crawl_website(website_url)
-        return result["emails"]
+    parser.add_argument(
+        "--delay",
+        type=float,
+        default=1.0,
+        help="Delay between page requests in seconds (default: 1.0)",
+    )
+
+    parser.add_argument(
+        "--timeout",
+        type=int,
+        default=15,
+        help="Request timeout in seconds (default: 15)",
+    )
+
+    return parser.parse_args()
 
 
-async def batch_extract_emails(
-    businesses: List[Dict[str, Any]], delay: float = 1.0
-) -> List[Dict[str, Any]]:
-    """
-    Extract emails from multiple business websites.
+async def main_async():
+    """Async main: read CSV, extract emails, update CSV in place."""
+    args = parse_args()
 
-    Args:
-        businesses: List of business dicts with 'website' key
-        delay: Delay between requests to same domain
+    print("=" * 60)
+    print("Website Email Extractor")
+    print("=" * 60)
+    print(f"  CSV file: {args.csv}")
+    print("=" * 60 + "\n")
 
-    Returns:
-        Updated list of businesses with emails added
-    """
-    async with WebsiteEmailExtractor(delay=delay) as extractor:
-        for i, business in enumerate(businesses):
-            website = business.get("website", "")
-            if website:
-                print(f"  [{i + 1}/{len(businesses)}] Crawling: {website[:50]}...")
+    # Load rows from CSV
+    rows = load_csv(args.csv)
+    if not rows:
+        print("No rows found in CSV.")
+        return
+
+    total = len(rows)
+    to_scrape = [
+        (i, r)
+        for i, r in enumerate(rows)
+        if r.get("website") and r.get("email_scraped", "").lower() != "true"
+    ]
+    already_done = total - len(to_scrape)
+
+    print(f"  Total rows:       {total}")
+    print(f"  Already scraped:  {already_done}")
+    print(f"  To scrape:        {len(to_scrape)}\n")
+
+    if not to_scrape:
+        print("Nothing to do — all rows already scraped.")
+        return
+
+    emails_total = 0
+
+    async with WebsiteEmailExtractor(
+        timeout=args.timeout, delay=args.delay
+    ) as extractor:
+        for count, (idx, row) in enumerate(to_scrape, 1):
+            website = row["website"]
+            print(f"  [{count}/{len(to_scrape)}] {website[:60]}...")
+
+            try:
                 result = await extractor.crawl_website(website)
-                business["emails_found"] = result["emails"]
-            else:
-                business["emails_found"] = []
+                emails = result["emails"]
+            except Exception as e:
+                print(f"    Error: {e}")
+                emails = []
 
-        return businesses
+            # Update the row
+            if emails:
+                existing = row.get("emails_found", "")
+                existing_set = (
+                    {e.strip() for e in existing.split(";") if e.strip()}
+                    if existing
+                    else set()
+                )
+                existing_set.update(emails)
+                row["emails_found"] = "; ".join(sorted(existing_set))
+                emails_total += len(emails)
+                print(f"    Found {len(emails)} emails: {', '.join(emails)}")
+
+            row["email_scraped"] = "true"
+            rows[idx] = row
+
+            # Save after every row so progress is never lost
+            save_csv_rows(rows, args.csv)
+
+    # Summary
+    with_emails = sum(1 for r in rows if r.get("emails_found"))
+    print(f"\n{'=' * 50}")
+    print(f"  Rows processed:       {len(to_scrape)}")
+    print(f"  New emails found:     {emails_total}")
+    print(f"  Total rows w/ email:  {with_emails}")
+    print(f"{'=' * 50}")
+    print(f"\nDone! Updated: {args.csv}")
+
+
+def main():
+    """Main entry point."""
+    try:
+        asyncio.run(main_async())
+    except KeyboardInterrupt:
+        print("\n\nInterrupted by user (progress saved)")
+        sys.exit(1)
+    except Exception as e:
+        print(f"\n\nError: {e}")
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

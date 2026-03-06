@@ -11,6 +11,22 @@ from typing import List, Dict, Any, Optional
 from pathlib import Path
 
 
+CSV_FIELDNAMES = [
+    "business_name",
+    "category",
+    "address",
+    "city",
+    "province",
+    "phone",
+    "website",
+    "emails_found",
+    "google_maps_url",
+    "rating",
+    "reviews_count",
+    "email_scraped",
+]
+
+
 # Email regex pattern
 EMAIL_PATTERN = re.compile(
     r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}", re.IGNORECASE
@@ -55,19 +71,7 @@ def save_to_csv(businesses: List[Dict[str, Any]], filename: str) -> None:
     if not businesses:
         return
 
-    fieldnames = [
-        "business_name",
-        "category",
-        "address",
-        "city",
-        "province",
-        "phone",
-        "website",
-        "emails_found",
-        "google_maps_url",
-        "rating",
-        "reviews_count",
-    ]
+    fieldnames = CSV_FIELDNAMES
 
     # Deduplicate by google_maps_url
     seen_urls = set()
@@ -89,6 +93,9 @@ def save_to_csv(businesses: List[Dict[str, Any]], filename: str) -> None:
             # Convert lists to semicolon-separated strings
             if isinstance(row.get("emails_found"), list):
                 row["emails_found"] = "; ".join(row["emails_found"])
+            # Mark as not yet scraped for emails
+            if not row.get("email_scraped"):
+                row["email_scraped"] = "false"
             writer.writerow(row)
 
     print(f"✓ Saved {len(unique_businesses)} businesses to {filename}")
@@ -279,3 +286,27 @@ def extract_province_from_address(address: str) -> str:
 def ensure_dir(path: str) -> None:
     """Ensure directory exists."""
     Path(path).mkdir(parents=True, exist_ok=True)
+
+
+def load_csv(filename: str) -> List[Dict[str, str]]:
+    """Load businesses from CSV file into list of dicts."""
+    rows = []
+    with open(filename, "r", newline="", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            rows.append(dict(row))
+    return rows
+
+
+def save_csv_rows(rows: List[Dict[str, str]], filename: str) -> None:
+    """Write a full list of row dicts back to CSV, preserving column order."""
+    if not rows:
+        return
+
+    with open(filename, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=CSV_FIELDNAMES)
+        writer.writeheader()
+        for row in rows:
+            writer.writerow({field: row.get(field, "") for field in CSV_FIELDNAMES})
+
+    print(f"  ✓ Saved {len(rows)} rows to {filename}")

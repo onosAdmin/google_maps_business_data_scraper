@@ -19,4 +19,5 @@ dependencies = [
 include = ["maps_scraper*"]
 
 [project.scripts]
-maps-scraper = "maps_scraper.scraper:main"
+maps-scraper-search = "maps_scraper.google_map_scraper:main"
+maps-scraper-emails = "maps_scraper.website_email_extractor:main"
