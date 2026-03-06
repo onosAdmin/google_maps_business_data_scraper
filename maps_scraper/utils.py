@@ -107,11 +107,10 @@ def save_to_json(businesses: List[Dict[str, Any]], filename: str) -> None:
         elif not url:
             unique_businesses.append(business)
 
-    json_filename = filename.replace(".csv", ".json")
-    with open(json_filename, "w", encoding="utf-8") as f:
+    with open(filename, "w", encoding="utf-8") as f:
         json.dump(unique_businesses, f, indent=2, ensure_ascii=False)
 
-    print(f"✓ Saved {len(unique_businesses)} businesses to {json_filename}")
+    print(f"✓ Saved {len(unique_businesses)} businesses to {filename}")
 
 
 def extract_emails(text: str) -> List[str]:

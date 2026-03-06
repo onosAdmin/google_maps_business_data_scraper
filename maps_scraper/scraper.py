@@ -156,6 +156,7 @@ async def main_async():
 
     # Check for resume
     businesses = []
+    resumed = False
     if args.resume and os.path.exists(progress_filename):
         progress_data = load_progress(progress_filename)
         if (
@@ -163,20 +164,25 @@ async def main_async():
             and progress_data.get("location") == args.location
         ):
             businesses = progress_data.get("businesses", [])
-            print(
-                f"📂 Resumed from previous session: {len(businesses)} businesses loaded"
-            )
+            if businesses:
+                resumed = True
+                print(
+                    f"📂 Resumed from previous session: {len(businesses)} businesses loaded"
+                )
 
-    # Step 1: Scrape Google Maps
-    print("\n[1/2] Scraping Google Maps...")
-    businesses = await scrape_maps(
-        args.query,
-        args.location,
-        headless,
-        args.scroll_delay,
-        args.max_scrolls,
-        args.login,
-    )
+    # Step 1: Scrape Google Maps (skip if resumed with data)
+    if not resumed:
+        print("\n[1/2] Scraping Google Maps...")
+        businesses = await scrape_maps(
+            args.query,
+            args.location,
+            headless,
+            args.scroll_delay,
+            args.max_scrolls,
+            args.login,
+        )
+    else:
+        print("\n[1/2] Skipping Google Maps scrape (using resumed data)")
 
     print(f"✓ Found {len(businesses)} businesses on Google Maps")
 
@@ -204,9 +210,12 @@ async def main_async():
     businesses_with_emails = sum(1 for b in businesses if b.get("emails_found"))
 
     # Save results
+    json_filename = os.path.join(
+        args.output_dir, generate_output_filename(args.query, args.location, "json")
+    )
     print("\n💾 Saving results...")
     save_to_csv(businesses, csv_filename)
-    save_to_json(businesses, csv_filename)
+    save_to_json(businesses, json_filename)
 
     # Print summary
     print_progress(
@@ -220,7 +229,7 @@ async def main_async():
 
     print(f"✅ Done! Results saved to:")
     print(f"  - {csv_filename}")
-    print(f"  - {csv_filename.replace('.csv', '.json')}")
+    print(f"  - {json_filename}")
 
 
 def main():

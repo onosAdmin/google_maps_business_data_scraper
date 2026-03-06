@@ -50,6 +50,7 @@ class WebsiteEmailExtractor:
         self.delay = delay
         self.browser: Optional[Browser] = None
         self.session: Optional[requests.Session] = None
+        self._playwright = None
 
     async def __aenter__(self):
         await self.start()
@@ -63,13 +64,15 @@ class WebsiteEmailExtractor:
         self.session = requests.Session()
         self.session.headers.update(HEADERS)
 
-        playwright = await async_playwright().start()
-        self.browser = await playwright.chromium.launch(headless=True)
+        self._playwright = await async_playwright().start()
+        self.browser = await self._playwright.chromium.launch(headless=True)
 
     async def close(self):
         """Cleanup resources."""
         if self.browser:
             await self.browser.close()
+        if self._playwright:
+            await self._playwright.stop()
 
     def normalize_url(self, base_url: str, path: str = "/") -> str:
         """Normalize URL by joining base with path."""

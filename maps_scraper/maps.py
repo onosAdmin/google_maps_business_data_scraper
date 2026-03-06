@@ -30,6 +30,7 @@ class GoogleMapsScraper:
         self.max_scroll_attempts = max_scroll_attempts
         self.browser: Optional[Browser] = None
         self.page: Optional[Page] = None
+        self._playwright = None
 
     async def __aenter__(self):
         """Async context manager entry."""
@@ -42,7 +43,8 @@ class GoogleMapsScraper:
 
     async def start(self) -> None:
         """Initialize Playwright and browser."""
-        playwright = await async_playwright().start()
+        self._playwright = await async_playwright().start()
+        playwright = self._playwright
         self.browser = await playwright.chromium.launch(
             headless=self.headless,
             args=["--disable-blink-features=AutomationControlled"],
@@ -60,6 +62,8 @@ class GoogleMapsScraper:
         """Close browser and cleanup."""
         if self.browser:
             await self.browser.close()
+        if self._playwright:
+            await self._playwright.stop()
 
     async def handle_cookie_banner(self) -> None:
         """Handle Google cookie consent banner."""
