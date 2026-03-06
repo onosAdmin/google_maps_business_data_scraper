@@ -53,7 +53,7 @@ This reads the CSV, crawls each business website for email addresses, and update
 | Flag | Description | Default |
 |------|-------------|---------|
 | `--csv` | Path to CSV file (required) | - |
-| `--delay` | Delay between page requests in seconds | 1.0 |
+| `--delay` | Delay between page requests in seconds | 0.01 |
 | `--timeout` | Request timeout in seconds | 15 |
 
 ## Output

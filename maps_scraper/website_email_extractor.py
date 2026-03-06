@@ -207,8 +207,8 @@ def parse_args():
     parser.add_argument(
         "--delay",
         type=float,
-        default=1.0,
-        help="Delay between page requests in seconds (default: 1.0)",
+        default=0.01,
+        help="Delay between page requests in seconds (default: 0.01)",
     )
 
     parser.add_argument(
