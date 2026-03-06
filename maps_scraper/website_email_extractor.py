@@ -132,9 +132,21 @@ class WebsiteEmailExtractor:
 
         return list(emails)
 
+    async def _extract_from_page_safe(self, url: str, all_emails: Set[str]) -> bool:
+        """Extract emails from a page, collecting into shared set. Returns True if page was fetched."""
+        try:
+            emails = await self.extract_from_page(url)
+            if emails:
+                all_emails.update(emails)
+                path = urlparse(url).path or "/"
+                print(f"    Found {len(emails)} emails on {path}")
+            return True
+        except Exception:
+            return False
+
     async def crawl_website(self, website_url: str) -> Dict[str, Any]:
         """
-        Crawl a website to find emails.
+        Crawl a website to find emails. All contact paths are fetched concurrently.
 
         Returns dict with:
             - emails: list of unique emails found
@@ -148,41 +160,24 @@ class WebsiteEmailExtractor:
         parsed = urlparse(website_url)
         base_domain = parsed.netloc
 
-        all_emails: Set[str] = set()
-        visited_urls: Set[str] = set()
-        pages_to_visit = []
-
-        # Add homepage and contact paths
+        # Build deduplicated list of URLs to visit
+        seen: Set[str] = set()
+        urls_to_visit: List[str] = []
         for path in CONTACT_PATHS:
             url = self.normalize_url(website_url, path)
-            pages_to_visit.append(url)
+            if url not in seen and urlparse(url).netloc == base_domain:
+                seen.add(url)
+                urls_to_visit.append(url)
 
-        pages_crawled = 0
+        # Cap to max_pages
+        urls_to_visit = urls_to_visit[: self.max_pages]
 
-        for url in pages_to_visit:
-            if pages_crawled >= self.max_pages:
-                break
+        all_emails: Set[str] = set()
 
-            if url in visited_urls:
-                continue
-
-            parsed_url = urlparse(url)
-
-            # Only crawl same domain
-            if parsed_url.netloc != base_domain:
-                continue
-
-            visited_urls.add(url)
-
-            # Delay between requests
-            await asyncio.sleep(self.delay)
-
-            emails = await self.extract_from_page(url)
-            all_emails.update(emails)
-            pages_crawled += 1
-
-            if emails:
-                print(f"    ✓ Found {len(emails)} emails on {parsed_url.path or '/'}")
+        # Fetch all contact paths concurrently
+        tasks = [self._extract_from_page_safe(url, all_emails) for url in urls_to_visit]
+        results = await asyncio.gather(*tasks)
+        pages_crawled = sum(1 for r in results if r)
 
         return {
             "emails": list(all_emails),
