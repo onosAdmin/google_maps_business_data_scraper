@@ -156,14 +156,6 @@ class GoogleMapsScraper:
             for link in all_links:
                 href = await link.get_attribute("href")
                 if href and "/maps/place/" in href and href not in business_urls:
-                    # Clean the URL
-                    if "?ng=" in href:
-                        href = href.split("?ng=")[0]
-                    if "!" in href:
-                        href = (
-                            "https://www.google.com/maps/place/"
-                            + href.split("/maps/place/")[-1].split("!")[0]
-                        )
                     business_urls.append(href)
 
             current_count = len(business_urls)
@@ -341,52 +333,39 @@ class GoogleMapsScraper:
 
         return data
 
-    async def click_and_extract_all(self) -> List[Dict[str, Any]]:
-        """Click on each result and extract data from the side panel."""
-        print("📜 Clicking on each result to extract data...")
+    async def extract_all_by_url(
+        self, business_urls: List[str], max_results: int = 0
+    ) -> List[Dict[str, Any]]:
+        """Navigate to each business URL and extract data from the page.
+
+        Args:
+            business_urls: List of Google Maps place URLs to visit.
+            max_results: Maximum businesses to extract (0 = no limit).
+
+        Returns:
+            List of extracted business data dicts.
+        """
+        print(f"📋 Extracting data from {len(business_urls)} businesses...")
+
+        if not business_urls:
+            print("  ⚠ No business URLs to process!")
+            return []
 
         businesses = []
+        total = len(business_urls)
+        if max_results > 0:
+            business_urls = business_urls[:max_results]
+            total = len(business_urls)
 
-        # Find all business result links - based on the HTML structure
-        result_selectors = [
-            'div[role="article"] a.hfpxzc',
-            'div.Nv2PK a[href*="/maps/place/"]',
-            "a.hfpxzc[aria-label]",
-            'div[role="feed"] a[href*="/maps/place/"]',
-        ]
-
-        results = []
-        for sel in result_selectors:
-            results = await self.page.query_selector_all(sel)
-            if results:
-                print(f"  Found {len(results)} results with selector: {sel}")
-                break
-
-        if not results:
-            print("  ⚠ No results found!")
-            return businesses
-
-        # Click on each result and extract from panel
-        for i, result in enumerate(results[:20]):  # Process up to 20 results
+        for i, url in enumerate(business_urls):
             try:
-                # Get the URL before clicking
-                href = await result.get_attribute("href")
-                if not href or "/maps/place/" not in href:
-                    continue
+                print(f"  [{i + 1}/{total}] Navigating to business...")
 
-                # Get the name for logging
-                aria_label = await result.get_attribute("aria-label")
-                print(
-                    f"  [{i + 1}/{len(results)}] Clicking: {aria_label or 'unknown'}..."
-                )
+                await self.page.goto(url, wait_until="domcontentloaded")
+                await asyncio.sleep(3)  # Wait for place details to render
 
-                # Click on the result to open side panel
-                await result.click()
-                await asyncio.sleep(2)  # Wait for panel to open
-
-                # Extract data from panel
-                data = await self.extract_business_from_panel(href)
-                data["google_maps_url"] = href
+                data = await self.extract_business_from_panel(url)
+                data["google_maps_url"] = url
                 businesses.append(data)
 
                 if data["business_name"]:
@@ -398,10 +377,14 @@ class GoogleMapsScraper:
                 else:
                     print(f"    ⚠ No data extracted")
 
+            except PlaywrightError as e:
+                print(f"    ⚠ Navigation error: {e}")
+                continue
             except Exception as e:
                 print(f"    ⚠ Error: {e}")
                 continue
 
+        print(f"✓ Extracted data from {len(businesses)} businesses")
         return businesses
 
     async def scrape(
@@ -410,6 +393,7 @@ class GoogleMapsScraper:
         location: str,
         business_urls: Optional[List[str]] = None,
         login: bool = False,
+        max_results: int = 0,
     ) -> List[Dict[str, Any]]:
         """
         Main scraping method.
@@ -419,12 +403,11 @@ class GoogleMapsScraper:
             location: Location (e.g., "Verona, Italy")
             business_urls: Optional list of URLs to scrape (if None, will search)
             login: If True, wait for manual login before proceeding
+            max_results: Maximum businesses to extract (0 = no limit)
 
         Returns:
             List of business data dictionaries
         """
-        businesses = []
-
         if business_urls is None:
             await self.search(query, location)
 
@@ -434,11 +417,11 @@ class GoogleMapsScraper:
                     "Please log into Google now, then press ENTER to continue..."
                 )
 
-            # Scroll to load results
-            await self.scroll_results()
+            # Scroll to load all results and collect their URLs
+            business_urls = await self.scroll_results()
 
-        # Click on each result and extract from side panel
-        businesses = await self.click_and_extract_all()
+        # Navigate to each business URL and extract data
+        businesses = await self.extract_all_by_url(business_urls, max_results)
 
         return businesses
 

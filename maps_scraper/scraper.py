@@ -91,6 +91,13 @@ def parse_args():
         help="Wait for manual Google login before scraping",
     )
 
+    parser.add_argument(
+        "--max-results",
+        type=int,
+        default=0,
+        help="Maximum businesses to extract (default: 0 = no limit)",
+    )
+
     return parser.parse_args()
 
 
@@ -101,12 +108,15 @@ async def scrape_maps(
     scroll_delay: int,
     max_scrolls: int,
     login: bool = False,
+    max_results: int = 0,
 ) -> List[Dict[str, Any]]:
     """Scrape Google Maps for business listings."""
     async with GoogleMapsScraper(
         headless=headless, scroll_delay=scroll_delay, max_scroll_attempts=max_scrolls
     ) as scraper:
-        businesses = await scraper.scrape(query, location, login=login)
+        businesses = await scraper.scrape(
+            query, location, login=login, max_results=max_results
+        )
         return businesses
 
 
@@ -180,6 +190,7 @@ async def main_async():
             args.scroll_delay,
             args.max_scrolls,
             args.login,
+            args.max_results,
         )
     else:
         print("\n[1/2] Skipping Google Maps scrape (using resumed data)")
