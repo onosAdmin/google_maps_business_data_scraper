@@ -23,17 +23,28 @@ maps-scraper-search --query "hotel" --location "Verona, Italy"
 
 This creates `output/results_hotel_Verona_Italy.csv` and `.json` with all businesses found.
 
+#### Province mode
+
+Scrape all villages in an Italian province automatically:
+
+```bash
+maps-scraper-search --query "hotel" --province "Vicenza"
+```
+
+This fetches the list of villages from visureinrete.it and loops through each one. Results are saved to a single `output/results_hotel_Vicenza.csv`. Safe to interrupt and resume — already-scraped villages are skipped.
+
 #### Options
 
 | Flag | Description | Default |
 |------|-------------|---------|
 | `--query` | Search query (required) | - |
-| `--location` | Location (required) | - |
+| `--location` | Single location (mutually exclusive with `--province`) | - |
+| `--province` | Italian province name — scrapes all villages (mutually exclusive with `--location`) | - |
 | `--headless` | Run browser in headless mode | False (visible) |
 | `--output-dir` | Output directory | `output` |
 | `--scroll-delay` | Delay between scrolls in ms | 2000 |
 | `--max-scrolls` | Maximum scroll attempts | 50 |
-| `--max-results` | Max businesses to extract (0 = no limit) | 0 |
+| `--max-results` | Max businesses to extract per location (0 = no limit) | 0 |
 | `--login` | Wait for manual Google login before scraping | False |
 
 ### Step 2: Extract emails from websites
@@ -64,6 +75,9 @@ Build and run with Docker Compose — no local Python or Playwright installation
 
 ```bash
 docker compose run --rm search --query "hotel" --location "Verona, Italy" --headless
+
+# Or scrape an entire province
+docker compose run --rm search --query "hotel" --province "Vicenza" --headless
 ```
 
 ### Step 2: Extract emails from websites
@@ -94,3 +108,4 @@ Results saved to `output/results_{query}_{location}.csv` with these columns:
 | `rating` | Rating score |
 | `reviews_count` | Number of reviews |
 | `email_scraped` | Whether email extraction was done for this row |
+| `search_village` | Village name used in search (province mode only) |

@@ -24,6 +24,7 @@ CSV_FIELDNAMES = [
     "rating",
     "reviews_count",
     "email_scraped",
+    "search_village",
 ]
 
 
