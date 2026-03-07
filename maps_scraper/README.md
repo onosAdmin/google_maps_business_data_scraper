@@ -56,6 +56,26 @@ This reads the CSV, crawls each business website for email addresses, and update
 | `--delay` | Delay between page requests in seconds | 0.01 |
 | `--timeout` | Request timeout in seconds | 15 |
 
+## Docker
+
+Build and run with Docker Compose — no local Python or Playwright installation needed.
+
+### Step 1: Scrape Google Maps
+
+```bash
+docker compose run --rm search --query "hotel" --location "Verona, Italy" --headless
+```
+
+### Step 2: Extract emails from websites
+
+```bash
+docker compose run --rm emails --csv output/results_hotel_Verona_Italy.csv
+```
+
+Results are saved to the `output/` folder on the host via a volume mount.
+
+> **Note:** The `--headless` flag is required when running in Docker (no display server). The `--login` flag is not supported in Docker.
+
 ## Output
 
 Results saved to `output/results_{query}_{location}.csv` with these columns:
