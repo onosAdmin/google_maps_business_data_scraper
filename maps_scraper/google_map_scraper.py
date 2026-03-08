@@ -90,6 +90,34 @@ def parse_args():
         help="Wait for manual Google login before scraping",
     )
 
+    parser.add_argument(
+        "--village-delay",
+        type=int,
+        default=60,
+        help="Delay between villages in seconds (default: 60)",
+    )
+
+    parser.add_argument(
+        "--max-retries",
+        type=int,
+        default=3,
+        help="Maximum retry attempts on timeout (default: 3)",
+    )
+
+    parser.add_argument(
+        "--retry-delay",
+        type=int,
+        default=120,
+        help="Base delay for retry exponential backoff in seconds (default: 120)",
+    )
+
+    parser.add_argument(
+        "--restart-every",
+        type=int,
+        default=0,
+        help="Restart browser context after N pages scraped (helps avoid blocks, default: 0=disabled)",
+    )
+
     return parser.parse_args()
 
 
@@ -107,6 +135,12 @@ async def scrape_single_location(
         login=login,
         max_results=max_results,
     )
+
+    # Track pages and check if we need to restart
+    scraper._pages_scraped += 1
+    if scraper.should_restart():
+        await scraper.restart_context()
+
     return businesses
 
 
@@ -121,22 +155,28 @@ def _already_scraped_villages(csv_filename: str) -> set:
         return set()
 
 
+def _is_timeout_error(e: Exception) -> bool:
+    """Check if exception is a timeout error."""
+    error_str = str(e)
+    return "Timeout" in error_str or "timeout" in error_str
+
+
 def _append_to_csv(businesses: List[Dict[str, Any]], csv_filename: str) -> None:
     """Append businesses to an existing CSV (or create it if missing)."""
     import csv as csv_mod
-    from .utils import CSV_FIELDNAMES
+    from .utils import CSV_FIELDNAMES, clean_csv_field
 
     fieldnames = CSV_FIELDNAMES
     file_exists = os.path.exists(csv_filename) and os.path.getsize(csv_filename) > 0
 
     with open(csv_filename, "a", newline="", encoding="utf-8") as f:
-        writer = csv_mod.DictWriter(f, fieldnames=fieldnames)
+        writer = csv_mod.DictWriter(f, fieldnames=fieldnames, quoting=csv_mod.QUOTE_ALL)
         if not file_exists:
             writer.writeheader()
         for business in businesses:
-            row = {field: business.get(field, "") for field in fieldnames}
-            if isinstance(row.get("emails_found"), list):
-                row["emails_found"] = "; ".join(row["emails_found"])
+            row = {
+                field: clean_csv_field(business.get(field, "")) for field in fieldnames
+            }
             if not row.get("email_scraped"):
                 row["email_scraped"] = "false"
             writer.writerow(row)
@@ -178,6 +218,7 @@ async def _run_single_mode(args):
         headless=args.headless,
         scroll_delay=args.scroll_delay,
         max_scroll_attempts=args.max_scrolls,
+        restart_every=args.restart_every,
     ) as scraper:
         businesses = await scrape_single_location(
             scraper,
@@ -220,6 +261,9 @@ async def _run_province_mode(args):
     print(f"  Headless: {args.headless}")
     if args.max_results:
         print(f"  Max results per village: {args.max_results}")
+    print(f"  Village delay: {args.village_delay}s")
+    print(f"  Max retries: {args.max_retries}")
+    print(f"  Retry delay: {args.retry_delay}s (base)")
     print("=" * 60 + "\n")
 
     # Fetch village list
@@ -261,22 +305,37 @@ async def _run_province_mode(args):
         headless=args.headless,
         scroll_delay=args.scroll_delay,
         max_scroll_attempts=args.max_scrolls,
+        restart_every=args.restart_every,
     ) as scraper:
         for i, village in enumerate(remaining, 1):
             location = f"{village}, Italy"
             print(f"\n[{i}/{len(remaining)}] Scraping: {args.query} in {location}")
             print("-" * 50)
 
-            try:
-                businesses = await scrape_single_location(
-                    scraper,
-                    args.query,
-                    location,
-                    login=(args.login and i == 1),  # login only on first village
-                    max_results=args.max_results,
-                )
-            except Exception as e:
-                print(f"  Error scraping {village}: {e}")
+            businesses = None
+            for attempt in range(1, args.max_retries + 2):
+                try:
+                    businesses = await scrape_single_location(
+                        scraper,
+                        args.query,
+                        location,
+                        login=(args.login and i == 1),
+                        max_results=args.max_results,
+                    )
+                    break
+                except Exception as e:
+                    if _is_timeout_error(e) and attempt < args.max_retries + 1:
+                        delay = args.retry_delay * attempt
+                        print(
+                            f"  Timeout error (attempt {attempt}/{args.max_retries + 1}), "
+                            f"waiting {delay}s before retry..."
+                        )
+                        await asyncio.sleep(delay)
+                    else:
+                        print(f"  Error scraping {village}: {e}")
+                        break
+
+            if businesses is None:
                 continue
 
             if not businesses:
@@ -294,9 +353,18 @@ async def _run_province_mode(args):
 
             _append_to_csv(businesses, csv_filename)
             total_new += len(businesses)
+
+            # Check if we need to restart the browser context
+            scraper._pages_scraped += 1
+            if scraper.should_restart():
+                await scraper.restart_context()
             print(
                 f"  -> {len(businesses)} businesses added (total so far: {total_new})"
             )
+
+            if i < len(remaining):
+                print(f"  Waiting {args.village_delay}s before next village...")
+                await asyncio.sleep(args.village_delay)
 
     # Also save a combined JSON at the end
     try:

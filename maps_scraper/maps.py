@@ -23,14 +23,17 @@ class GoogleMapsScraper:
         timeout: int = 30000,
         scroll_delay: int = 2000,
         max_scroll_attempts: int = 50,
+        restart_every: int = 0,
     ):
         self.headless = headless
         self.timeout = timeout
         self.scroll_delay = scroll_delay
         self.max_scroll_attempts = max_scroll_attempts
+        self.restart_every = restart_every
         self.browser: Optional[Browser] = None
         self.page: Optional[Page] = None
         self._playwright = None
+        self._pages_scraped = 0
 
     async def __aenter__(self):
         """Async context manager entry."""
@@ -57,6 +60,33 @@ class GoogleMapsScraper:
 
         # Set longer default timeout
         self.page.set_default_timeout(self.timeout)
+
+    async def restart_context(self) -> None:
+        """Close current context and create a new one to avoid blocking."""
+        if self.restart_every <= 0:
+            return
+
+        print(f"  ↻ Restarting browser context after {self._pages_scraped} pages...")
+
+        # Close only the context, not the browser
+        if self.page:
+            await self.page.context.close()
+
+        # Create new context with fresh cookies/session
+        context = await self.browser.new_context(
+            viewport={"width": 1920, "height": 1080},
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        )
+        self.page = await context.new_page()
+        self.page.set_default_timeout(self.timeout)
+        self._pages_scraped = 0
+
+        # Wait a bit before continuing
+        await asyncio.sleep(2)
+
+    def should_restart(self) -> bool:
+        """Check if it's time to restart the context."""
+        return self.restart_every > 0 and self._pages_scraped >= self.restart_every
 
     async def close(self) -> None:
         """Close browser and cleanup."""
@@ -283,7 +313,7 @@ class GoogleMapsScraper:
             address_elem = await self.page.query_selector('[data-item-id="address"]')
             if address_elem:
                 address_text = await address_elem.inner_text()
-                data["address"] = address_text.strip()
+                data["address"] = " ".join(address_text.split())
                 # Extract city/province
                 parts = address_text.split(",")
                 if len(parts) >= 2:
@@ -291,7 +321,9 @@ class GoogleMapsScraper:
                     prov_match = re.search(r"\b([A-Z]{2})\s*(\d{5})?", last)
                     if prov_match:
                         data["province"] = prov_match.group(1)
-                        data["city"] = parts[-2].strip() if len(parts) > 1 else ""
+                        data["city"] = (
+                            " ".join(parts[-2].split()) if len(parts) > 1 else ""
+                        )
                     else:
                         data["city"] = last
 
@@ -299,7 +331,9 @@ class GoogleMapsScraper:
             phone_elem = await self.page.query_selector('[data-item-id^="phone"]')
             if phone_elem:
                 phone_text = await phone_elem.inner_text()
-                data["phone"] = re.sub(r"[^\d+\s\-()]", "", phone_text)
+                data["phone"] = " ".join(
+                    re.sub(r"[^\d+\s\-()]", "", phone_text).split()
+                )
 
             # Also try regex on page text for phone
             if not data["phone"]:
