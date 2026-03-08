@@ -28,6 +28,22 @@ CSV_FIELDNAMES = [
 ]
 
 
+def clean_csv_field(value: Any) -> str:
+    """Clean a field value to remove newlines and excess whitespace for CSV."""
+    if value is None:
+        return ""
+    if isinstance(value, list):
+        return "; ".join(str(v) for v in value)
+    s = str(value)
+    s = re.sub(
+        r"[\r\n\t\f\v\r\u00a0\u1680\u180e\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]+",
+        " ",
+        s,
+    )
+    s = re.sub(r"\s+", " ", s)
+    return s.strip()
+
+
 # Email regex pattern
 EMAIL_PATTERN = re.compile(
     r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}", re.IGNORECASE
@@ -87,13 +103,12 @@ def save_to_csv(businesses: List[Dict[str, Any]], filename: str) -> None:
             unique_businesses.append(business)
 
     with open(filename, "w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer = csv.DictWriter(f, fieldnames=fieldnames, quoting=csv.QUOTE_ALL)
         writer.writeheader()
         for business in unique_businesses:
-            row = {field: business.get(field, "") for field in fieldnames}
-            # Convert lists to semicolon-separated strings
-            if isinstance(row.get("emails_found"), list):
-                row["emails_found"] = "; ".join(row["emails_found"])
+            row = {
+                field: clean_csv_field(business.get(field, "")) for field in fieldnames
+            }
             # Mark as not yet scraped for emails
             if not row.get("email_scraped"):
                 row["email_scraped"] = "false"
@@ -305,9 +320,11 @@ def save_csv_rows(rows: List[Dict[str, str]], filename: str) -> None:
         return
 
     with open(filename, "w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=CSV_FIELDNAMES)
+        writer = csv.DictWriter(f, fieldnames=CSV_FIELDNAMES, quoting=csv.QUOTE_ALL)
         writer.writeheader()
         for row in rows:
-            writer.writerow({field: row.get(field, "") for field in CSV_FIELDNAMES})
+            writer.writerow(
+                {field: clean_csv_field(row.get(field, "")) for field in CSV_FIELDNAMES}
+            )
 
     print(f"  ✓ Saved {len(rows)} rows to {filename}")
