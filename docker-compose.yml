@@ -4,6 +4,7 @@ services:
     entrypoint: ["maps-scraper-search"]
     volumes:
       - ./output:/app/output
+      - ./maps_scraper:/app/maps_scraper
     # Example usage:
     #   docker compose run --rm search --query "hotel" --location "Verona, Italy"
     #   docker compose run --rm search --query "restaurant" --location "Rome, Italy" --headless --max-results 50
@@ -13,5 +14,6 @@ services:
     entrypoint: ["maps-scraper-emails"]
     volumes:
       - ./output:/app/output
+      - ./maps_scraper:/app/maps_scraper
     # Example usage:
     #   docker compose run --rm emails --csv output/results_hotel_Verona_Italy.csv

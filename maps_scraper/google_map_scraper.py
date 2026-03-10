@@ -354,15 +354,15 @@ async def _run_province_mode(args):
             _append_to_csv(businesses, csv_filename)
             total_new += len(businesses)
 
-            # Check if we need to restart the browser context
-            scraper._pages_scraped += 1
-            if scraper.should_restart():
-                await scraper.restart_context()
             print(
                 f"  -> {len(businesses)} businesses added (total so far: {total_new})"
             )
 
             if i < len(remaining):
+                # Restart browser context between villages to clear accumulated
+                # state (WebSockets, service workers, cached connections) that
+                # would cause "networkidle" timeouts on the next navigation.
+                await scraper.restart_context(force=True)
                 print(f"  Waiting {args.village_delay}s before next village...")
                 await asyncio.sleep(args.village_delay)
 

@@ -61,9 +61,9 @@ class GoogleMapsScraper:
         # Set longer default timeout
         self.page.set_default_timeout(self.timeout)
 
-    async def restart_context(self) -> None:
+    async def restart_context(self, force: bool = False) -> None:
         """Close current context and create a new one to avoid blocking."""
-        if self.restart_every <= 0:
+        if not force and self.restart_every <= 0:
             return
 
         print(f"  ↻ Restarting browser context after {self._pages_scraped} pages...")
@@ -147,7 +147,7 @@ class GoogleMapsScraper:
         url = f"https://www.google.com/maps/search/{search_term.replace(' ', '+')}"
 
         print(f"🔍 Searching: {search_term}")
-        await self.page.goto(url, wait_until="networkidle")
+        await self.page.goto(url, wait_until="domcontentloaded")
 
         # Handle cookie consent banner
         await self.handle_cookie_banner()
