@@ -68,8 +68,10 @@ class GoogleMapsScraper:
 
         print(f"  ↻ Restarting browser context after {self._pages_scraped} pages...")
 
-        # Close only the context, not the browser
+        # Close page and context to release all resources
         if self.page:
+            await self.page.close()
+        if self.page and self.page.context:
             await self.page.context.close()
 
         # Create new context with fresh cookies/session

@@ -92,16 +92,19 @@ class WebsiteEmailExtractor:
         if not self.browser:
             return None
 
+        page = None
         try:
             page = await self.browser.new_page()
             await page.goto(
                 url, timeout=self.timeout * 1000, wait_until="domcontentloaded"
             )
             content = await page.content()
-            await page.close()
             return content
         except Exception:
             return None
+        finally:
+            if page:
+                await page.close()
 
     def fetch_with_requests(self, url: str) -> Optional[str]:
         """Fetch page content using requests (faster for static pages)."""
